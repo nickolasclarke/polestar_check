@@ -1,4 +1,4 @@
-# /usr/bin/env python3
+#!/usr/bin/python3
 
 import requests
 
@@ -178,8 +178,15 @@ def pretty_print_vehicle_results(vehicle: dict):
     url = (
         f"https://www.polestar.com/us/preowned-cars/product/polestar-2/{vehicle['id']}"
     )
+    dealer_price = vehicle["price"]["dealer"]
+    retail_price = vehicle["price"]["retail"]
+    m_year = vehicle["vehicleDetails"]["modelDetails"]["modelYear"]
+    mileage = vehicle["mileageInfo"]["distance"]
+    m_unit = vehicle["mileageInfo"]["metric"]
+    city = vehicle["partnerLocation"]["city"]
+    range = vehicle["vehicleDetails"]["rangeInformation"]
     print(
-        f"${vehicle['price']['dealer']:,} (${vehicle['price']['retail']:,}) - {vehicle['mileageInfo']['distance']} {vehicle['mileageInfo']['metric']} - {vehicle['partnerLocation']['city']} - {url}"
+        f"${dealer_price:<6,} ({retail_price:,}) - {m_year} {mileage:<6} {m_unit} - range: {range} mi - {city:<15} {url}"
     )
 
 
