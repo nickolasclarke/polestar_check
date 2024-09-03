@@ -157,7 +157,9 @@ def check_polestar(query: dict = GQL_QUERY):
         headers=headers,
         json=data,
     )
-    return response.json()
+    return (
+        response.json()
+    )  # TODO getting a 504 request timeout. check later, or dig back into the API. Perhaps we need to break up the query into smaller chunks
 
 
 def replace_labels(vehicle: dict):
