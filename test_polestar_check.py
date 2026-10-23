@@ -117,6 +117,17 @@ def test_report_sections_are_sorted_cheapest_first(report):
         assert prices == sorted(prices), header
 
 
+def test_report_lists_every_new_car_under_its_model(report, new_cars):
+    for (car_model, model), header in zip(pc.MODELS.items(), report):
+        expected = sum(
+            1
+            for car in new_cars
+            if pc.feature(car, "Model")["code"] == model.get("pno3")
+        )
+        actual = sum(line.startswith("New") for line in report[header])
+        assert actual == expected, car_model
+
+
 def test_report_tags_every_line(report):
     for lines in report.values():
         assert all(line.startswith(("New", "CPO", "Pre-owned")) for line in lines)
@@ -135,10 +146,14 @@ def test_fetch_dealers_returns_us_dealers_with_partner_ids(dealers):
     assert all(d["partnerId"].startswith("6US") and d["name"] for d in dealers)
 
 
-def test_fetch_new_vehicles_pages_through_every_result(dealers):
+@pytest.fixture(scope="module")
+def new_cars(dealers):
+    return pc.fetch_new_vehicles(dealers, STOCK_CODES)
+
+
+def test_fetch_new_vehicles_pages_through_every_result(dealers, new_cars):
     # Find a dealer with at least 2 cars, then fetch it again 1 car per page
-    everything = pc.fetch_new_vehicles(dealers, STOCK_CODES)
-    counts = collections.Counter(c["dealer"]["partnerId"] for c in everything)
+    counts = collections.Counter(c["dealer"]["partnerId"] for c in new_cars)
     partner_id, count = counts.most_common(1)[0]
     if count < 2:
         pytest.skip("no dealer currently lists 2+ new cars")
