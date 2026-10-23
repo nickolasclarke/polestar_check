@@ -6,7 +6,16 @@
 # ]
 # ///
 
+import copy
+
 import requests
+
+# Polestar's carModel codes, mapped to display name and product page URL slug
+MODELS = {
+    "PS2": {"name": "Polestar 2", "url_slug": "polestar-2"},
+    "PS3": {"name": "Polestar 3", "url_slug": "polestar-3"},
+    "PS4": {"name": "Polestar 4", "url_slug": "polestar-4-coupe"},
+}
 
 GQL_QUERY = {
     "query": """
@@ -55,6 +64,7 @@ GQL_QUERY = {
             }
             vehicleDetails {
                 vin
+                cycleState
                 interior {
                 labels {
                     label
@@ -128,7 +138,11 @@ GQL_QUERY = {
         "limit": 100,
         "sortOrder": "Ascending",
         "sortProperty": "Price",
-        "equalFilters": [{"filterType": "CycleState", "value": "PreOwned"}],
+        # multiple filters of the same type are OR'd together
+        "equalFilters": [
+            {"filterType": "CycleState", "value": "PreOwned"},
+            {"filterType": "CycleState", "value": "CertifiedPreOwned"},
+        ],
         "excludeFilters": [{"filterType": "CycleState", "value": "New"}],
     },
 }
@@ -166,6 +180,30 @@ def check_polestar(query: dict = GQL_QUERY):
     return response.json()
 
 
+def fetch_vehicles(car_model: str, limit: int = 100) -> list[dict]:
+    """
+    Get every listed vehicle of a model, paging through results
+    """
+    query = copy.deepcopy(GQL_QUERY)
+    query["variables"].update(carModel=car_model, limit=limit)
+    vehicles = []
+    while True:
+        query["variables"]["offset"] = len(vehicles)
+        search = check_polestar(query)["data"]["searchVehicleAds"]
+        vehicles.extend(search["vehicleAds"])
+        # stop on an empty page too, so a miscounted total can't loop forever
+        if (
+            len(vehicles) >= search["metadata"]["resultCount"]
+            or not search["vehicleAds"]
+        ):
+            return vehicles
+
+
+def vehicle_url(car_model: str, vehicle_id: str) -> str:
+    slug = MODELS[car_model]["url_slug"]
+    return f"https://www.polestar.com/us/preowned-cars/product/{slug}/{vehicle_id}"
+
+
 def replace_labels(vehicle: dict):
     for key, value in vehicle.items():
         if isinstance(value, dict):
@@ -181,9 +219,7 @@ def replace_labels(vehicle: dict):
 
 
 def pretty_print_vehicle_results(vehicle: dict):
-    url = (
-        f"https://www.polestar.com/us/preowned-cars/product/polestar-2/{vehicle['id']}"
-    )
+    url = vehicle_url(vehicle["vehicleDetails"]["modelDetails"]["model"], vehicle["id"])
     dealer_price = vehicle["price"]["dealer"]
     retail_price = vehicle["price"]["retail"]
     m_year = vehicle["vehicleDetails"]["modelDetails"]["modelYear"]
@@ -196,28 +232,10 @@ def pretty_print_vehicle_results(vehicle: dict):
     )
 
 
-# Build product page link with the following:
-# https://www.polestar.com/us/preowned-cars/product/polestar-2/<INSERT ID HERE> vehicleAds.id
-
 if __name__ == "__main__":
-    res = check_polestar()
-    if res["data"]["searchVehicleAds"]["metadata"]["resultCount"] > 0:
-        vehicles = res["data"]["searchVehicleAds"]["vehicleAds"]
-        # page through reults if there are more than the limit
-        if (
-            res["data"]["searchVehicleAds"]["metadata"]["resultCount"]
-            > res["data"]["searchVehicleAds"]["metadata"]["limit"]
-        ):
-            for i in range(
-                1,
-                res["data"]["searchVehicleAds"]["metadata"]["resultCount"]
-                // res["data"]["searchVehicleAds"]["metadata"]["limit"],
-            ):
-                GQL_QUERY["variables"]["offset"] = (
-                    i * res["data"]["searchVehicleAds"]["metadata"]["limit"]
-                )
-                res = check_polestar()
-                vehicles.extend(res["data"]["searchVehicleAds"]["vehicleAds"])
-        vehicles = [replace_labels(vehicle) for vehicle in vehicles]
+    for car_model, model in MODELS.items():
+        vehicles = [replace_labels(vehicle) for vehicle in fetch_vehicles(car_model)]
+        print(f"{model['name']} ({len(vehicles)})")
         for vehicle in vehicles:
             pretty_print_vehicle_results(vehicle)
+        print()
