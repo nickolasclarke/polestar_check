@@ -237,7 +237,7 @@ STOCK_QUERY = {
 
 def check_polestar(query: dict = GQL_QUERY, url: str = PREOWNED_API_URL):
     """
-    Get the latest used car stock from Polestar's graphql API
+    Post a graphql query to a Polestar API and return the decoded JSON
     """
     headers = {
         "Accept": "application/json",
@@ -261,7 +261,9 @@ def check_polestar(query: dict = GQL_QUERY, url: str = PREOWNED_API_URL):
         url,
         headers=headers,
         json=data,
+        timeout=30,
     )
+    response.raise_for_status()
     return response.json()
 
 
@@ -298,7 +300,7 @@ def fetch_new_vehicles(
 ) -> list[dict]:
     """
     Get every new car of the given models from each dealer, paging through
-    results. A dealer the API rejects is reported on stderr and skipped.
+    results. A dealer whose request fails is reported on stderr and skipped.
     """
     query = copy.deepcopy(STOCK_QUERY)
     # the type 4 filter group selects cars by model code
@@ -316,12 +318,15 @@ def fetch_new_vehicles(
                 "pageNo": len(dealer_vehicles) // page_size + 1,
                 "pageSize": page_size,
             }
-            response = check_polestar(query, STOCK_API_URL)
-            if "errors" in response:
-                print(
-                    f"warning: {dealer['name']}: {response['errors'][0]['message']}",
-                    file=sys.stderr,
+            try:
+                response = check_polestar(query, STOCK_API_URL)
+                failure = (
+                    response["errors"][0]["message"] if "errors" in response else None
                 )
+            except requests.RequestException as e:
+                failure = e
+            if failure:
+                print(f"warning: {dealer['name']}: {failure}", file=sys.stderr)
                 dealer_vehicles = []
                 break
             stock = response["data"]["vehicles"]

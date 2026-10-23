@@ -5,10 +5,18 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import requests
 
 import polestar_check as pc
 
 SCRIPT = Path(__file__).parent / "polestar_check.py"
+
+
+def test_check_polestar_raises_on_http_error():
+    url = "https://pc-api.polestar.com/eu-north-1/no-such-api/"
+
+    with pytest.raises(requests.HTTPError):
+        pc.check_polestar(pc.DEALERS_QUERY, url=url)
 
 
 def test_vehicle_url_uses_each_models_product_page_slug():
@@ -126,6 +134,10 @@ def test_report_lists_every_new_car_under_its_model(report, new_cars):
         )
         actual = sum(line.startswith("New") for line in report[header])
         assert actual == expected, car_model
+    # the query only requests models in MODELS, so no new car may be dropped
+    assert sum(
+        line.startswith("New") for lines in report.values() for line in lines
+    ) == len(new_cars)
 
 
 def test_report_tags_every_line(report):
