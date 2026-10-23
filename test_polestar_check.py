@@ -1,6 +1,9 @@
+import collections
 import copy
 import subprocess
 from pathlib import Path
+
+import pytest
 
 import polestar_check as pc
 
@@ -84,3 +87,40 @@ def test_report_lists_each_model_in_its_own_section():
         lines = sections[header]
         assert header.endswith(f"({len(lines)})")
         assert all(slug in line for line in lines)
+
+
+STOCK_CODES = ["359", "814"]
+
+
+@pytest.fixture(scope="module")
+def dealers():
+    return pc.fetch_dealers()
+
+
+def test_fetch_dealers_returns_us_dealers_with_partner_ids(dealers):
+    assert len(dealers) > 1
+    assert all(d["partnerId"].startswith("6US") and d["name"] for d in dealers)
+
+
+def test_fetch_new_vehicles_pages_through_every_result(dealers):
+    # Find a dealer with at least 2 cars, then fetch it again 1 car per page
+    everything = pc.fetch_new_vehicles(dealers, STOCK_CODES)
+    counts = collections.Counter(c["dealer"]["partnerId"] for c in everything)
+    partner_id, count = counts.most_common(1)[0]
+    if count < 2:
+        pytest.skip("no dealer currently lists 2+ new cars")
+    dealer = [d for d in dealers if d["partnerId"] == partner_id]
+
+    one_per_page = pc.fetch_new_vehicles(dealer, STOCK_CODES, page_size=1)
+
+    assert len(one_per_page) == count
+
+
+def test_fetch_new_vehicles_warns_and_skips_failing_dealer(capsys):
+    bogus = {"partnerId": "BOGUS", "name": "Nowhere", "city": "Nowhere"}
+
+    assert pc.fetch_new_vehicles([bogus], STOCK_CODES) == []
+
+    err = capsys.readouterr().err
+    assert err.startswith("warning: Nowhere: ")
+    assert err.count("\n") == 1

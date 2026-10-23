@@ -7,14 +7,22 @@
 # ///
 
 import copy
+import sys
 
 import requests
+
+PREOWNED_API_URL = "https://pc-api.polestar.com/eu-north-1/partner-rm-tool/public/"
+STOCK_API_URL = "https://pc-api.polestar.com/eu-north-1/preconfigured-cars/"
 
 # Polestar's carModel codes, mapped to display name and product page URL slug
 MODELS = {
     "PS2": {"name": "Polestar 2", "url_slug": "polestar-2"},
-    "PS3": {"name": "Polestar 3", "url_slug": "polestar-3"},
-    "PS4": {"name": "Polestar 4", "url_slug": "polestar-4-coupe"},
+    "PS3": {"name": "Polestar 3", "url_slug": "polestar-3", "pno3": "359"},
+    "PS4": {
+        "name": "Polestar 4",
+        "url_slug": "polestar-4-coupe",
+        "pno3": "814",
+    },
 }
 
 GQL_QUERY = {
@@ -147,13 +155,83 @@ GQL_QUERY = {
     },
 }
 
+DEALERS_QUERY = {
+    "query": """
+        query Dealers {
+        getAllRetailersFunction(marketMappingCode: "us", source: Preconfigured) {
+            partnerId
+            name
+            city
+        }
+        }
+        """,
+    "variables": {},
+}
 
-def check_polestar(query: dict = GQL_QUERY):
+STOCK_QUERY = {
+    "query": """
+        query NewStock(
+        $filters: [FilterValueGroupInput]!
+        $pagination: PaginationInput
+        $partnerId: String
+        ) {
+        vehicles: filteredStockCars(
+            market: "us"
+            includeValidFilters: false
+            filters: $filters
+            pagination: $pagination
+            partnerId: $partnerId
+            customerType: "B2C"
+            source: Preconfigured
+        ) {
+            pagination {
+            totalRecords
+            }
+            filterResults {
+            pno34
+            modelYear
+            startStructureWeek
+            content {
+                featureType
+                code
+                name
+            }
+            cashPriceData {
+                discounted {
+                totals {
+                    grandTotal {
+                    paymentTotal {
+                        paymentTotalPrice {
+                        value
+                        }
+                    }
+                    }
+                }
+                }
+                listPrice {
+                totals {
+                    grandTotal {
+                    paymentTotal {
+                        paymentTotalPrice {
+                        value
+                        }
+                    }
+                    }
+                }
+                }
+            }
+            }
+        }
+        }
+        """,
+    "variables": {},
+}
+
+
+def check_polestar(query: dict = GQL_QUERY, url: str = PREOWNED_API_URL):
     """
     Get the latest used car stock from Polestar's graphql API
     """
-    url = "https://pc-api.polestar.com/eu-north-1/partner-rm-tool/public/"
-
     headers = {
         "Accept": "application/json",
         "Accept-Language": "en-US,en;q=0.5",
@@ -197,6 +275,58 @@ def fetch_vehicles(car_model: str, limit: int = 100) -> list[dict]:
             or not search["vehicleAds"]
         ):
             return vehicles
+
+
+def fetch_dealers() -> list[dict]:
+    """
+    Get every US dealer that can list new stock
+    """
+    return check_polestar(DEALERS_QUERY, STOCK_API_URL)["data"][
+        "getAllRetailersFunction"
+    ]
+
+
+def fetch_new_vehicles(
+    dealers: list[dict], pno3_codes: list[str], page_size: int = 100
+) -> list[dict]:
+    """
+    Get every new car of the given models from each dealer, paging through
+    results. A dealer the API rejects is reported on stderr and skipped.
+    """
+    query = copy.deepcopy(STOCK_QUERY)
+    # the type 4 filter group selects cars by model code
+    model_filter = {
+        "filterTypeId": "4",
+        "filterValues": [{"value": c, "featureCode": c} for c in pno3_codes],
+    }
+    query["variables"]["filters"] = [model_filter]
+    vehicles = []
+    for dealer in dealers:
+        query["variables"]["partnerId"] = dealer["partnerId"]
+        dealer_vehicles = []
+        while True:
+            query["variables"]["pagination"] = {
+                "pageNo": len(dealer_vehicles) // page_size + 1,
+                "pageSize": page_size,
+            }
+            response = check_polestar(query, STOCK_API_URL)
+            if "errors" in response:
+                print(
+                    f"warning: {dealer['name']}: {response['errors'][0]['message']}",
+                    file=sys.stderr,
+                )
+                dealer_vehicles = []
+                break
+            stock = response["data"]["vehicles"]
+            dealer_vehicles.extend(stock["filterResults"])
+            # stop on an empty page too, so a miscounted total can't loop forever
+            if (
+                len(dealer_vehicles) >= stock["pagination"]["totalRecords"]
+                or not stock["filterResults"]
+            ):
+                break
+        vehicles.extend({**v, "dealer": dealer} for v in dealer_vehicles)
+    return vehicles
 
 
 def vehicle_url(car_model: str, vehicle_id: str) -> str:
