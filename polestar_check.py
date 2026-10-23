@@ -218,8 +218,8 @@ def replace_labels(vehicle: dict):
     return vehicle
 
 
-def pretty_print_vehicle_results(vehicle: dict):
-    url = vehicle_url(vehicle["vehicleDetails"]["modelDetails"]["model"], vehicle["id"])
+def pretty_print_vehicle_results(car_model: str, vehicle: dict):
+    url = vehicle_url(car_model, vehicle["id"])
     dealer_price = vehicle["price"]["dealer"]
     retail_price = vehicle["price"]["retail"]
     m_year = vehicle["vehicleDetails"]["modelDetails"]["modelYear"]
@@ -237,5 +237,5 @@ if __name__ == "__main__":
         vehicles = [replace_labels(vehicle) for vehicle in fetch_vehicles(car_model)]
         print(f"{model['name']} ({len(vehicles)})")
         for vehicle in vehicles:
-            pretty_print_vehicle_results(vehicle)
+            pretty_print_vehicle_results(car_model, vehicle)
         print()

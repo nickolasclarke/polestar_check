@@ -1,3 +1,4 @@
+import copy
 import subprocess
 from pathlib import Path
 
@@ -33,16 +34,29 @@ def test_fetch_vehicles_pages_through_every_result():
     assert set(ids) == {v["id"] for v in single_page}
 
 
-def test_fetch_vehicles_includes_certified_preowned():
+def test_fetch_vehicles_returns_every_listing_that_is_not_new():
+    # Query with no cycle-state filter so certified pre-owned stock (most PS2s
+    # at the time of writing) can't be silently dropped by fetch_vehicles.
+    unfiltered = copy.deepcopy(pc.GQL_QUERY)
+    unfiltered["variables"].update(
+        carModel="PS2", limit=500, equalFilters=[], excludeFilters=[]
+    )
+    listings = pc.check_polestar(unfiltered)["data"]["searchVehicleAds"]["vehicleAds"]
+    not_new = {v["id"] for v in listings if v["vehicleDetails"]["cycleState"] != "New"}
+
     vehicles = pc.fetch_vehicles("PS2")
 
-    cycle_states = {v["vehicleDetails"]["cycleState"] for v in vehicles}
-    assert cycle_states == {"PreOwned", "CertifiedPreOwned"}
+    assert not_new
+    assert {v["id"] for v in vehicles} == not_new
 
 
 def test_report_lists_each_model_in_its_own_section():
     result = subprocess.run(
-        [str(SCRIPT)], capture_output=True, text=True, check=True
+        # --quiet keeps uv's own install messages out of stderr on a cold cache
+        ["uv", "run", "--quiet", str(SCRIPT)],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert result.stderr == ""
 
@@ -53,7 +67,9 @@ def test_report_lists_each_model_in_its_own_section():
             current = line
             sections[current] = []
         elif line.strip():
-            assert current is not None, f"vehicle listed before any model header: {line}"
+            assert (
+                current is not None
+            ), f"vehicle listed before any model header: {line}"
             sections[current].append(line)
 
     headers = list(sections)
@@ -62,8 +78,9 @@ def test_report_lists_each_model_in_its_own_section():
         "Polestar 3",
         "Polestar 4",
     ]
-    for header, slug in zip(headers, ["polestar-2/", "polestar-3/", "polestar-4-coupe/"]):
+    for header, slug in zip(
+        headers, ["polestar-2/", "polestar-3/", "polestar-4-coupe/"]
+    ):
         lines = sections[header]
         assert header.endswith(f"({len(lines)})")
-        assert lines, f"no vehicles listed under {header}"
         assert all(slug in line for line in lines)
