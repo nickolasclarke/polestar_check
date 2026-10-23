@@ -365,7 +365,7 @@ def replace_labels(vehicle: dict):
     return vehicle
 
 
-def pretty_print_vehicle_results(car_model: str, vehicle: dict):
+def preowned_line(car_model: str, vehicle: dict) -> tuple[int, str]:
     url = vehicle_url(car_model, vehicle["id"])
     dealer_price = vehicle["price"]["dealer"]
     retail_price = vehicle["price"]["retail"]
@@ -374,15 +374,54 @@ def pretty_print_vehicle_results(car_model: str, vehicle: dict):
     m_unit = vehicle["mileageInfo"]["metric"]
     city = vehicle["partnerLocation"]["city"]
     range = vehicle["vehicleDetails"]["rangeInformation"]
-    print(
-        f"${dealer_price:<6,} ({retail_price:,}) - {m_year} {mileage:<6} {m_unit} - range: {range} mi - {city:<15} {url}"
+    certified = vehicle["vehicleDetails"]["cycleState"] == "CertifiedPreOwned"
+    tag = "CPO" if certified else "Pre-owned"
+    return (
+        dealer_price,
+        f"{tag:<9} ${dealer_price:<6,} ({retail_price:,}) - {m_year} {mileage:<6} {m_unit} - range: {range} mi - {city:<15} {url}",
+    )
+
+
+def feature(car: dict, feature_type: str) -> dict:
+    return next(c for c in car["content"] if c["featureType"] == feature_type)
+
+
+def new_line(car_model: str, car: dict) -> tuple[int, str]:
+    prices = car["cashPriceData"]
+    price = int(
+        prices["discounted"]["totals"]["grandTotal"]["paymentTotal"][
+            "paymentTotalPrice"
+        ]["value"]
+    )
+    msrp = int(
+        prices["listPrice"]["totals"]["grandTotal"]["paymentTotal"][
+            "paymentTotalPrice"
+        ]["value"]
+    )
+    engine = feature(car, "Engine")["name"]
+    color = feature(car, "Color")["name"]
+    city = car["dealer"]["city"]
+    url = stock_url(car_model, car)
+    return (
+        price,
+        f"{'New':<9} ${price:<6,} ({msrp:,}) - {car['modelYear']} {engine}, {color} - {city:<15} {url}",
     )
 
 
 if __name__ == "__main__":
+    pno3_codes = [model["pno3"] for model in MODELS.values() if "pno3" in model]
+    new_cars = fetch_new_vehicles(fetch_dealers(), pno3_codes)
     for car_model, model in MODELS.items():
-        vehicles = [replace_labels(vehicle) for vehicle in fetch_vehicles(car_model)]
-        print(f"{model['name']} ({len(vehicles)})")
-        for vehicle in vehicles:
-            pretty_print_vehicle_results(car_model, vehicle)
+        lines = [
+            preowned_line(car_model, replace_labels(vehicle))
+            for vehicle in fetch_vehicles(car_model)
+        ]
+        lines += [
+            new_line(car_model, car)
+            for car in new_cars
+            if feature(car, "Model")["code"] == model.get("pno3")
+        ]
+        print(f"{model['name']} ({len(lines)})")
+        for _, line in sorted(lines, key=lambda priced_line: priced_line[0]):
+            print(line)
         print()

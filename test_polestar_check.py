@@ -1,5 +1,6 @@
 import collections
 import copy
+import re
 import subprocess
 from pathlib import Path
 
@@ -67,7 +68,8 @@ def test_fetch_vehicles_returns_every_listing_that_is_not_new():
     assert {v["id"] for v in vehicles} == not_new
 
 
-def test_report_lists_each_model_in_its_own_section():
+@pytest.fixture(scope="module")
+def report():
     result = subprocess.run(
         # --quiet keeps uv's own install messages out of stderr on a cold cache
         ["uv", "run", "--quiet", str(SCRIPT)],
@@ -88,8 +90,11 @@ def test_report_lists_each_model_in_its_own_section():
                 current is not None
             ), f"vehicle listed before any model header: {line}"
             sections[current].append(line)
+    return sections
 
-    headers = list(sections)
+
+def test_report_lists_each_model_in_its_own_section(report):
+    headers = list(report)
     assert [h.split(" (")[0] for h in headers] == [
         "Polestar 2",
         "Polestar 3",
@@ -98,9 +103,23 @@ def test_report_lists_each_model_in_its_own_section():
     for header, slug in zip(
         headers, ["polestar-2/", "polestar-3/", "polestar-4-coupe/"]
     ):
-        lines = sections[header]
+        lines = report[header]
         assert header.endswith(f"({len(lines)})")
         assert all(slug in line for line in lines)
+
+
+def test_report_sections_are_sorted_cheapest_first(report):
+    for header, lines in report.items():
+        prices = [
+            int(re.search(r"\$([\d,]+)", line).group(1).replace(",", ""))
+            for line in lines
+        ]
+        assert prices == sorted(prices), header
+
+
+def test_report_tags_every_line(report):
+    for lines in report.values():
+        assert all(line.startswith(("New", "CPO", "Pre-owned")) for line in lines)
 
 
 STOCK_CODES = ["359", "814"]
