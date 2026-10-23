@@ -1,4 +1,10 @@
-#!/usr/bin/python3
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#     "requests",
+# ]
+# ///
 
 import requests
 
