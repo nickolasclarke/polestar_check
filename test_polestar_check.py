@@ -25,6 +25,20 @@ def test_vehicle_url_uses_each_models_product_page_slug():
     )
 
 
+def test_stock_url_matches_site_format():
+    car = {
+        "pno34": "814PAPB0E13137300P04300      00000221001XCBL11XPILOT",
+        "modelYear": "2026",
+        "startStructureWeek": "202617",
+        "dealer": {"partnerId": "6US6631"},
+    }
+    assert pc.stock_url("PS4", car) == (
+        "https://www.polestar.com/us/stock-cars/polestar-4-coupe/"
+        "814PAPB0E13137300P04300%20%20%20%20%20%2000000221001XCBL11XPILOT/"
+        "?year=2026&structureweek=202617&partnerid=6US6631"
+    )
+
+
 def test_fetch_vehicles_pages_through_every_result():
     # 19 PS3s at the time of writing; a page size of 5 forces several pages
     # including a partial final page.

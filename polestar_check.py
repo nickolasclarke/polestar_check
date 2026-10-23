@@ -8,19 +8,26 @@
 
 import copy
 import sys
+from urllib.parse import quote
 
 import requests
 
 PREOWNED_API_URL = "https://pc-api.polestar.com/eu-north-1/partner-rm-tool/public/"
 STOCK_API_URL = "https://pc-api.polestar.com/eu-north-1/preconfigured-cars/"
 
-# Polestar's carModel codes, mapped to display name and product page URL slug
+# Polestar's carModel codes, mapped to display name and product/stock page URL slugs
 MODELS = {
     "PS2": {"name": "Polestar 2", "url_slug": "polestar-2"},
-    "PS3": {"name": "Polestar 3", "url_slug": "polestar-3", "pno3": "359"},
+    "PS3": {
+        "name": "Polestar 3",
+        "url_slug": "polestar-3",
+        "stock_slug": "polestar-3",
+        "pno3": "359",
+    },
     "PS4": {
         "name": "Polestar 4",
         "url_slug": "polestar-4-coupe",
+        "stock_slug": "polestar-4-coupe",
         "pno3": "814",
     },
 }
@@ -332,6 +339,16 @@ def fetch_new_vehicles(
 def vehicle_url(car_model: str, vehicle_id: str) -> str:
     slug = MODELS[car_model]["url_slug"]
     return f"https://www.polestar.com/us/preowned-cars/product/{slug}/{vehicle_id}"
+
+
+def stock_url(car_model: str, car: dict) -> str:
+    slug = MODELS[car_model]["stock_slug"]
+    pno34 = quote(car["pno34"])
+    return (
+        f"https://www.polestar.com/us/stock-cars/{slug}/{pno34}/"
+        f"?year={car['modelYear']}&structureweek={car['startStructureWeek']}"
+        f"&partnerid={car['dealer']['partnerId']}"
+    )
 
 
 def replace_labels(vehicle: dict):
